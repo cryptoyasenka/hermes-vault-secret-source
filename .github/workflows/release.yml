@@ -1,0 +1,56 @@
+# Publish to PyPI via Trusted Publishing (OIDC) - no stored API token.
+#
+# On a version tag (v*), this builds the sdist and wheel, checks the metadata,
+# and uploads to PyPI. Authentication is a short-lived OIDC token minted by
+# GitHub Actions and exchanged with PyPI, so there is no long-lived secret in
+# the repository or environment. PyPI records the build provenance and the
+# action attaches PEP 740 attestations, both visible on the project page.
+#
+# One-time setup on PyPI (Account -> Publishing -> Add a pending publisher):
+#   PyPI Project Name: hermes-vault-secret-source
+#   Owner:             cryptoyasenka
+#   Repository name:   hermes-vault-secret-source
+#   Workflow name:     release.yml
+#   Environment name:  pypi
+#
+# Release: git tag v0.1.0 && git push origin v0.1.0
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/hermes-vault-secret-source/
+    permissions:
+      id-token: write  # required for Trusted Publishing (OIDC)
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Check metadata
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
