@@ -1,0 +1,93 @@
+# Continuous integration for hermes-vault-secret-source.
+#
+# The plugin imports the host Hermes contract (agent.secret_sources.base) and
+# runs against the host's own conformance kit (tests.secret_sources.conformance).
+# Neither ships on PyPI, so CI checks out the public host repo and puts it on
+# PYTHONPATH alongside the plugin. The whole import chain used by the tests is
+# standard-library only (base, registry and _cache import no third-party
+# packages; the agent package's jiter preload is best-effort), so the tests job
+# installs nothing beyond hvac and pytest and runs the FULL 28-test suite
+# (10 conformance + 18 behavioral).
+#
+# The host is pinned to a commit SHA for reproducibility. To move to a newer
+# host, bump HERMES_AGENT_REF below to another commit on NousResearch/hermes-agent.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned commit on NousResearch/hermes-agent (public) that carries the
+  # agent.secret_sources contract and the conformance kit under tests/.
+  HERMES_AGENT_REF: 5413c42f2cb8e9421b4ad1b5696ca3ff2a6f1bcb
+
+jobs:
+  tests:
+    name: tests (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.12"]
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Check out host hermes-agent (pinned, sparse)
+        uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ env.HERMES_AGENT_REF }}
+          path: host
+          sparse-checkout: |
+            agent
+            tests
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install runtime and test dependencies
+        run: python -m pip install --upgrade pip hvac pytest
+
+      - name: Run test suite (conformance + behavioral)
+        working-directory: plugin
+        env:
+          PYTHONPATH: ${{ github.workspace }}/host:${{ github.workspace }}/plugin
+        run: python -m pytest checks/ -v
+
+  lint:
+    name: static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install analysis tools
+        run: python -m pip install --upgrade pip ruff mypy bandit
+
+      # mypy treats the host agent.* packages and hvac as untyped externals
+      # (see [tool.mypy] in pyproject.toml), so this job needs neither the host
+      # checkout nor hvac installed.
+      - name: ruff
+        run: ruff check hermes_vault_secret_source
+
+      - name: mypy
+        run: mypy
+
+      - name: bandit
+        run: bandit -r hermes_vault_secret_source
