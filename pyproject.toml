@@ -33,3 +33,16 @@ packages = ["hermes_vault_secret_source"]
 # importlib mode keeps this repo's `tests/` from shadowing the hermes-agent
 # `tests` package (needed for tests.secret_sources.conformance).
 addopts = "--import-mode=importlib"
+
+[tool.mypy]
+files = ["hermes_vault_secret_source"]
+warn_redundant_casts = true
+no_implicit_optional = true
+
+# The host Hermes packages (agent.*) are resolved from a hermes-agent checkout on
+# PYTHONPATH at runtime and in CI, and hvac ships no type stubs. Treat both as
+# untyped external dependencies instead of type-checking their internals here.
+[[tool.mypy.overrides]]
+module = ["agent.*", "hvac", "hvac.*"]
+ignore_missing_imports = true
+follow_imports = "silent"

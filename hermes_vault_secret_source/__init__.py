@@ -25,10 +25,12 @@ from . import _client
 
 __all__ = ["VaultSource", "register"]
 
+# The following are NAMES of environment variables that hold Vault credentials,
+# not secret values themselves; bandit B105 flags the "TOKEN"/"SECRET" literals.
 _DEFAULT_ADDR_ENV = "VAULT_ADDR"
-_DEFAULT_TOKEN_ENV = "VAULT_TOKEN"
+_DEFAULT_TOKEN_ENV = "VAULT_TOKEN"  # nosec B105
 _DEFAULT_ROLE_ID_ENV = "VAULT_ROLE_ID"
-_DEFAULT_SECRET_ID_ENV = "VAULT_SECRET_ID"
+_DEFAULT_SECRET_ID_ENV = "VAULT_SECRET_ID"  # nosec B105
 _DEFAULT_MOUNT_POINT = "secret"
 _DEFAULT_CACHE_TTL_SECONDS = 300.0
 _DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
@@ -151,7 +153,8 @@ class VaultSource(SecretSource):
             return result
 
         auth_method = str(cfg.get("auth_method") or "token").strip().lower()
-        token = role_id = secret_id = ""
+        # Empty-string initialisation, not a hardcoded secret (bandit B105).
+        token = role_id = secret_id = ""  # nosec B105
         if auth_method == "token":
             token_env = str(cfg.get("token_env") or _DEFAULT_TOKEN_ENV)
             token = os.environ.get(token_env, "").strip()

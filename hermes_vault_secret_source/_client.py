@@ -23,8 +23,8 @@ from agent.secret_sources.base import is_valid_env_name
 try:
     from agent.secret_sources._cache import CachedFetch, DiskCache
 except Exception:  # pragma: no cover - only on an incompatible host
-    CachedFetch = None  # type: ignore[assignment]
-    DiskCache = None  # type: ignore[assignment]
+    CachedFetch = None  # type: ignore[assignment,misc]
+    DiskCache = None  # type: ignore[assignment,misc]
 
 
 def _serialize_cache_key(key) -> str:
