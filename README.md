@@ -15,18 +15,17 @@ precedence over it.
 ## Install
 
 ```bash
-pip install "hermes-vault-secret-source @ git+https://github.com/cryptoyasenka/hermes-vault-secret-source"
-```
-
-The package is not on PyPI yet, so install it straight from the repository as
-shown above. Once it is published, this simplifies to:
-
-```bash
 pip install hermes-vault-secret-source
 ```
 
-Either way this pulls in [`hvac`](https://hvac.readthedocs.io/), the official
-Python client for Vault. Install it into the same environment as `hermes-agent`.
+This pulls in [`hvac`](https://hvac.readthedocs.io/), the official Python client
+for Vault. Install it into the same environment as `hermes-agent`.
+
+To track the latest unreleased code, install from the repository instead:
+
+```bash
+pip install "hermes-vault-secret-source @ git+https://github.com/cryptoyasenka/hermes-vault-secret-source"
+```
 
 Hermes discovers the plugin automatically through the `hermes_agent.plugins`
 entry point, but plugins are opt-in. Enable it once:
