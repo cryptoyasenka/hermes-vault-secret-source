@@ -8,9 +8,22 @@ version = "0.1.0"
 description = "HashiCorp Vault secret source for Hermes Agent (bulk KV v2)."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "cryptoyasenka" }]
 keywords = ["hermes", "hermes-agent", "vault", "hashicorp", "secrets", "plugin"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Operating System :: OS Independent",
+]
 dependencies = ["hvac>=2.0"]
 
 [project.optional-dependencies]
@@ -18,6 +31,8 @@ test = ["pytest>=7"]
 
 [project.urls]
 Homepage = "https://github.com/cryptoyasenka/hermes-vault-secret-source"
+Repository = "https://github.com/cryptoyasenka/hermes-vault-secret-source"
+Issues = "https://github.com/cryptoyasenka/hermes-vault-secret-source/issues"
 
 # Hermes' plugin loader discovers standalone plugins through this entry-point
 # group. The value points at the package module that exposes `register(ctx)`
