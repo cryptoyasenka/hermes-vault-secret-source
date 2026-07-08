@@ -23,7 +23,7 @@ Hermes discovers the plugin automatically through the `hermes_agent.plugins`
 entry point, but plugins are opt-in. Enable it once:
 
 ```bash
-hermes plugins enable hermes-vault
+hermes plugins enable hermes-hashicorp-vault
 ```
 
 ## Configure

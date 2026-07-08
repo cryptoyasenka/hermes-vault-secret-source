@@ -24,7 +24,7 @@ Homepage = "https://github.com/cryptoyasenka/hermes-vault-secret-source"
 # (loader does `getattr(module, "register")`), so it must be the module, not
 # `module:register`.
 [project.entry-points."hermes_agent.plugins"]
-hermes-vault = "hermes_vault_secret_source"
+hermes-hashicorp-vault = "hermes_vault_secret_source"
 
 [tool.setuptools]
 packages = ["hermes_vault_secret_source"]
