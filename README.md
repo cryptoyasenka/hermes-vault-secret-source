@@ -1,5 +1,7 @@
 # hermes-vault-secret-source
 
+[![CI](https://github.com/cryptoyasenka/hermes-vault-secret-source/actions/workflows/ci.yml/badge.svg)](https://github.com/cryptoyasenka/hermes-vault-secret-source/actions/workflows/ci.yml)
+
 A [HashiCorp Vault](https://developer.hashicorp.com/vault) secret source for
 [Hermes Agent](https://github.com/NousResearch/hermes-agent), packaged as a
 standalone pip plugin.
@@ -13,11 +15,18 @@ precedence over it.
 ## Install
 
 ```bash
+pip install "hermes-vault-secret-source @ git+https://github.com/cryptoyasenka/hermes-vault-secret-source"
+```
+
+The package is not on PyPI yet, so install it straight from the repository as
+shown above. Once it is published, this simplifies to:
+
+```bash
 pip install hermes-vault-secret-source
 ```
 
-This pulls in [`hvac`](https://hvac.readthedocs.io/), the official Python client
-for Vault. Install it into the same environment as `hermes-agent`.
+Either way this pulls in [`hvac`](https://hvac.readthedocs.io/), the official
+Python client for Vault. Install it into the same environment as `hermes-agent`.
 
 Hermes discovers the plugin automatically through the `hermes_agent.plugins`
 entry point, but plugins are opt-in. Enable it once:
@@ -84,6 +93,52 @@ The env-var names are overridable per field (`addr_env`, `token_env`,
   they touch the cache key.
 * **Skips non-env-safe keys.** A KV key that is not a valid environment
   variable name is skipped with a warning rather than injected.
+
+## Threat model
+
+This plugin runs on the Hermes startup path with access to Vault credentials, so
+its security posture is deliberately narrow. Every protection below is already
+implemented; each maps to a concrete mechanism in the source.
+
+### Startup cannot be crashed by this source
+
+`fetch()` never raises. Every configuration problem returns a `FetchResult` with
+a machine-readable `ErrorKind` (`not_configured`, `auth_failed`, `ref_invalid`,
+`network`, `timeout`, `binary_missing`, `internal`), and the backend in
+`_client.py` only ever raises `RuntimeError`, which `fetch()` catches and
+classifies. A misconfigured, unreachable, or unauthenticated Vault degrades to a
+clean skip, never a traceback on the non-interactive startup path.
+
+### A Vault secret cannot hijack the credential used to reach Vault
+
+`protected_env_vars()` marks the auth env vars (`VAULT_ADDR`, `VAULT_TOKEN`,
+`VAULT_ROLE_ID`, `VAULT_SECRET_ID`, or their configured overrides) as protected.
+The orchestrator will not overwrite a protected variable, so a key that happens
+to be named `VAULT_TOKEN` inside the Vault payload cannot clobber the token the
+process is already using to authenticate. Names that are not valid env-var
+identifiers are dropped from the protected set, so a misconfigured section cannot
+silently weaken it.
+
+### Tokens never reach the on-disk cache in the clear
+
+The optional two-layer cache stores only resolved secret values. The Vault token
+(or the AppRole `role_id` and `secret_id`) is SHA-256 fingerprinted by
+`_fingerprint()` before it becomes part of the cache key, so neither the in-memory
+key nor the `vault_cache.json` file on disk contains the raw credential. Caching
+is opt-out: `cache_ttl_seconds: 0` disables it entirely.
+
+### Only environment-safe keys are injected
+
+Each KV v2 key is validated with the host's `is_valid_env_name()` before it is
+contributed. A key that is not a valid environment-variable name is skipped with
+a warning instead of being injected, so a stray Vault key cannot produce a
+malformed process environment.
+
+### TLS verification is on by default
+
+`verify` defaults to `true`. It is disabled only when the operator explicitly
+sets a false-y value, and a string value is treated as a CA-bundle path. TLS
+therefore fails closed rather than open.
 
 ## Development
 
