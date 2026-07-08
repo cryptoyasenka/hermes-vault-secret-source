@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-vault-secret-source"
+version = "0.1.0"
+description = "HashiCorp Vault secret source for Hermes Agent (bulk KV v2)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "cryptoyasenka" }]
+keywords = ["hermes", "hermes-agent", "vault", "hashicorp", "secrets", "plugin"]
+dependencies = ["hvac>=2.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/cryptoyasenka/hermes-vault-secret-source"
+
+# Hermes' plugin loader discovers standalone plugins through this entry-point
+# group. The value points at the package module that exposes `register(ctx)`
+# (loader does `getattr(module, "register")`), so it must be the module, not
+# `module:register`.
+[project.entry-points."hermes_agent.plugins"]
+hermes-vault = "hermes_vault_secret_source"
+
+[tool.setuptools]
+packages = ["hermes_vault_secret_source"]
+
+[tool.pytest.ini_options]
+# importlib mode keeps this repo's `tests/` from shadowing the hermes-agent
+# `tests` package (needed for tests.secret_sources.conformance).
+addopts = "--import-mode=importlib"
