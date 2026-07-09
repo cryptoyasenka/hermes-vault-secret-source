@@ -6,8 +6,8 @@
 # PYTHONPATH alongside the plugin. The whole import chain used by the tests is
 # standard-library only (base, registry and _cache import no third-party
 # packages; the agent package's jiter preload is best-effort), so the tests job
-# installs nothing beyond hvac and pytest and runs the FULL 31-test suite
-# (10 conformance + 21 behavioral).
+# installs nothing beyond hvac and pytest and runs the FULL 34-test suite
+# (10 conformance + 24 behavioral).
 #
 # The host is pinned to a commit SHA for reproducibility. To move to a newer
 # host, bump HERMES_AGENT_REF below to another commit on NousResearch/hermes-agent.

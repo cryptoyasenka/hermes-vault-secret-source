@@ -75,9 +75,11 @@ def fetch_vault_secrets(
     ``__init__.py`` catches this and classifies it onto an ``ErrorKind``.
     """
     if auth_method == "approle":
-        auth_fp = _fingerprint("approle:" + role_id + ":" + secret_id)
+        # json-encode, not delimiter-concat: a colon inside role_id/secret_id
+        # must not let two different credential pairs fingerprint identically.
+        auth_fp = _fingerprint(json.dumps(["approle", role_id, secret_id]))
     else:
-        auth_fp = _fingerprint("token:" + token)
+        auth_fp = _fingerprint(json.dumps(["token", token]))
     cache_key = (auth_fp, addr, mount_point, path, namespace or "")
 
     if use_cache and CachedFetch is not None:
@@ -212,7 +214,12 @@ def _read_kv2(
         if not is_valid_env_name(key):
             warnings.append(f"Skipping secret {key!r}: not a valid env-var name")
             continue
-        if key in _DANGEROUS_ENV_NAMES or key.startswith(_DANGEROUS_ENV_PREFIXES):
+        # Case-insensitive: on case-insensitive platforms (Windows) a key like
+        # "Path" resolves to PATH, so match regardless of the payload's casing.
+        upper_key = key.upper()
+        if upper_key in _DANGEROUS_ENV_NAMES or upper_key.startswith(
+            _DANGEROUS_ENV_PREFIXES
+        ):
             warnings.append(
                 f"Skipping secret {key!r}: refusing to inject a variable that "
                 "could hijack process, library, or interpreter resolution"

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-vault-secret-source"
-version = "0.1.1"
+version = "0.1.2"
 description = "HashiCorp Vault secret source for Hermes Agent (bulk KV v2)."
 readme = "README.md"
 requires-python = ">=3.9"

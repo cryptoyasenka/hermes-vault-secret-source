@@ -214,6 +214,9 @@ class VaultSource(SecretSource):
                 role_id=role_id,
                 secret_id=secret_id,
                 cache_ttl_seconds=ttl,
+                # ttl=0 means "no caching": don't even write secret values to the
+                # on-disk cache, independent of the host cache's ttl handling.
+                use_cache=ttl > 0,
                 home_path=home_path,
             )
         except RuntimeError as exc:
@@ -247,12 +250,15 @@ def _coerce_verify(value):
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
-        low = value.strip().lower()
+        stripped = value.strip()
+        low = stripped.lower()
         if low in ("false", "0", "no", "off"):
             return False
         if low in ("true", "1", "yes", "on"):
             return True
-        return value.strip()  # otherwise treat it as a CA-bundle path
+        # A non-empty string is a CA-bundle path. An empty/whitespace value is
+        # not a request to disable TLS, so fail closed to verification on.
+        return stripped or True
     return True
 
 

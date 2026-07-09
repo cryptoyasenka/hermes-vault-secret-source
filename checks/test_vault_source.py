@@ -260,6 +260,60 @@ def test_read_kv2_missing_hvac_raises_binary_missing(monkeypatch):
         _read()
 
 
+def test_read_kv2_denylist_is_case_insensitive(monkeypatch):
+    # On case-insensitive platforms (Windows) "Path" resolves to PATH, so the
+    # denylist must match regardless of the payload's casing.
+    _install_fake_hvac(
+        monkeypatch,
+        data={"GOOD": "1", "Path": "/evil", "ld_preload": "x.so",
+              "PyThOnPath": "/p", "Dyld_Insert_Libraries": "y"},
+    )
+    secrets, warnings = _read()
+    assert secrets == {"GOOD": "1"}
+    for name in ("Path", "ld_preload", "PyThOnPath", "Dyld_Insert_Libraries"):
+        assert any(name in w for w in warnings)
+
+
+# --------------------------------------------------------------------------
+# _coerce_verify - TLS verify must fail closed, never silently open
+# --------------------------------------------------------------------------
+
+def test_coerce_verify_blank_string_fails_closed():
+    from hermes_vault_secret_source import _coerce_verify
+
+    # An empty or whitespace-only value is not a request to disable TLS; a
+    # falsy return here would flip requests to CERT_NONE (MITM exposure).
+    assert _coerce_verify("") is True
+    assert _coerce_verify("   ") is True
+    # Explicit disables and real CA-bundle paths still behave as documented.
+    assert _coerce_verify("false") is False
+    assert _coerce_verify("/etc/ssl/ca.pem") == "/etc/ssl/ca.pem"
+    assert _coerce_verify(True) is True
+
+
+def test_ttl_zero_disables_caching(monkeypatch, tmp_path):
+    # cache_ttl_seconds: 0 must mean "no caching" at this layer too, so secret
+    # values are never handed to the cache regardless of host ttl handling.
+    monkeypatch.setenv("VAULT_ADDR", "http://127.0.0.1:8200")
+    monkeypatch.setenv("VAULT_TOKEN", "root")
+    seen = {}
+
+    def fake_fetch(**kwargs):
+        seen.update(kwargs)
+        return ({"K": "v"}, [])
+
+    monkeypatch.setattr(_client, "fetch_vault_secrets", fake_fetch)
+    VaultSource().fetch(
+        {"enabled": True, "path": "app/data", "cache_ttl_seconds": 0}, tmp_path
+    )
+    assert seen["use_cache"] is False
+    seen.clear()
+    VaultSource().fetch(
+        {"enabled": True, "path": "app/data", "cache_ttl_seconds": 300}, tmp_path
+    )
+    assert seen["use_cache"] is True
+
+
 # --------------------------------------------------------------------------
 # register() - the pip entry point Hermes calls to wire an external plugin
 # --------------------------------------------------------------------------
