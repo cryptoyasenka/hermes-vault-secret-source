@@ -109,6 +109,23 @@ def test_backend_runtimeerror_is_classified(monkeypatch, tmp_path, message, expe
     assert not result.secrets
 
 
+def test_fetch_never_raises_on_unexpected_backend_error(monkeypatch, tmp_path):
+    # The backend contract is RuntimeError-only, but a corrupt shared cache
+    # could surface e.g. ValueError. fetch() must still return a clean result
+    # rather than let anything escape onto the startup path.
+    monkeypatch.setenv("VAULT_ADDR", "http://127.0.0.1:8200")
+    monkeypatch.setenv("VAULT_TOKEN", "root")
+
+    def boom(**kwargs):
+        raise ValueError("corrupt cache file")
+
+    monkeypatch.setattr(_client, "fetch_vault_secrets", boom)
+    result = VaultSource().fetch({"enabled": True, "path": "app/data"}, tmp_path)
+    assert not result.ok
+    assert result.error_kind is ErrorKind.INTERNAL
+    assert not result.secrets
+
+
 # --------------------------------------------------------------------------
 # _client._read_kv2 - KV v2 parsing against a fake hvac client
 # --------------------------------------------------------------------------
@@ -191,6 +208,31 @@ def test_read_kv2_filters_and_coerces(monkeypatch):
     # bad-name skipped (invalid env name), NULL dropped (None), NUM coerced to str.
     assert secrets == {"GOOD": "1", "NUM": "5"}
     assert any("bad-name" in w for w in warnings)
+
+
+def test_read_kv2_skips_process_hijacking_names(monkeypatch):
+    _install_fake_hvac(
+        monkeypatch,
+        data={"GOOD": "1", "PATH": "/evil", "LD_PRELOAD": "x.so",
+              "PYTHONPATH": "/p", "DYLD_INSERT_LIBRARIES": "y"},
+    )
+    secrets, warnings = _read()
+    # Dangerous but valid-identifier names are refused even though injected here.
+    assert secrets == {"GOOD": "1"}
+    for name in ("PATH", "LD_PRELOAD", "PYTHONPATH", "DYLD_INSERT_LIBRARIES"):
+        assert any(name in w for w in warnings)
+
+
+def test_read_kv2_skips_non_scalar_values(monkeypatch):
+    _install_fake_hvac(
+        monkeypatch,
+        data={"OK": "v", "NUM": 5, "FLAG": True, "OBJ": {"a": 1}, "LST": [1, 2]},
+    )
+    secrets, warnings = _read()
+    # Scalars coerced (bool is a subclass of int -> "True"); structured skipped.
+    assert secrets == {"OK": "v", "NUM": "5", "FLAG": "True"}
+    assert any("OBJ" in w for w in warnings)
+    assert any("LST" in w for w in warnings)
 
 
 def test_read_kv2_auth_false_raises(monkeypatch):

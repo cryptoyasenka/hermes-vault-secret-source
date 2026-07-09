@@ -12,6 +12,7 @@ only an actually-configured fetch touches Vault.
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -28,7 +29,10 @@ except Exception:  # pragma: no cover - only on an incompatible host
 
 
 def _serialize_cache_key(key) -> str:
-    return "|".join(str(part) for part in key)
+    # json, not "|".join: a literal "|" inside path/namespace must not collapse
+    # two distinct keys onto the same disk-cache slot (which would serve one
+    # token's secrets under another's key).
+    return json.dumps([str(part) for part in key], separators=(",", ":"))
 
 
 _CACHE: Dict[tuple, "CachedFetch"] = {}
@@ -105,6 +109,19 @@ def fetch_vault_secrets(
         if _DISK_CACHE is not None:
             _DISK_CACHE.write(cache_key, entry, cache_ttl_seconds, home_path)
     return secrets, warnings
+
+
+# Valid env-var names that can nonetheless hijack how a process (or its
+# subprocesses) resolves binaries, shared libraries, or interpreter startup.
+# is_valid_env_name() accepts them, but a Vault payload must never be able to
+# inject them, so they are dropped with a warning regardless of override
+# settings. This keeps the plugin strictly stricter than a plain bulk source.
+_DANGEROUS_ENV_NAMES = frozenset({
+    "PATH", "IFS", "ENV", "BASH_ENV", "SHELLOPTS", "GLOBIGNORE",
+    "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONEXECUTABLE",
+    "NODE_OPTIONS", "NODE_PATH",
+})
+_DANGEROUS_ENV_PREFIXES = ("LD_", "DYLD_", "BASH_FUNC_")
 
 
 def _read_kv2(
@@ -192,11 +209,25 @@ def _read_kv2(
     for key, value in data.items():
         if not isinstance(key, str) or value is None:
             continue
-        str_value = value if isinstance(value, str) else str(value)
         if not is_valid_env_name(key):
             warnings.append(f"Skipping secret {key!r}: not a valid env-var name")
             continue
-        secrets[key] = str_value
+        if key in _DANGEROUS_ENV_NAMES or key.startswith(_DANGEROUS_ENV_PREFIXES):
+            warnings.append(
+                f"Skipping secret {key!r}: refusing to inject a variable that "
+                "could hijack process, library, or interpreter resolution"
+            )
+            continue
+        # Only scalars map cleanly onto the string-typed process environment; a
+        # structured value (list/dict) would stringify to an unusable repr, so
+        # skip it with a warning instead.
+        if isinstance(value, (str, int, float)):  # bool is a subclass of int
+            secrets[key] = str(value)
+        else:
+            warnings.append(
+                f"Skipping secret {key!r}: value type {type(value).__name__} is "
+                "not a scalar (only strings and numbers become env vars)"
+            )
     return secrets, warnings
 
 

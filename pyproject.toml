@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-vault-secret-source"
-version = "0.1.0"
+version = "0.1.1"
 description = "HashiCorp Vault secret source for Hermes Agent (bulk KV v2)."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -43,6 +43,10 @@ hermes-hashicorp-vault = "hermes_vault_secret_source"
 
 [tool.setuptools]
 packages = ["hermes_vault_secret_source"]
+
+[tool.setuptools.package-data]
+# Ship the PEP 561 marker so downstream type-checkers honor our annotations.
+hermes_vault_secret_source = ["py.typed"]
 
 [tool.pytest.ini_options]
 # importlib mode keeps this repo's `tests/` from shadowing the hermes-agent

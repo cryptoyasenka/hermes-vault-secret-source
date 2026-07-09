@@ -220,6 +220,13 @@ class VaultSource(SecretSource):
             result.error = str(exc)
             result.error_kind = _classify_vault_error(str(exc))
             return result
+        except Exception as exc:  # startup path must never raise
+            # The backend only raises RuntimeError, but the shared cache layer
+            # could surface an OSError/ValueError (for example a corrupt cache
+            # file). Degrade to a clean skip so nothing escapes onto startup.
+            result.error = f"secrets.vault failed unexpectedly: {exc}"
+            result.error_kind = ErrorKind.INTERNAL
+            return result
 
         result.secrets = secrets
         result.warnings.extend(warnings)

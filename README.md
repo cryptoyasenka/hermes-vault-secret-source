@@ -90,8 +90,12 @@ The env-var names are overridable per field (`addr_env`, `token_env`,
 * **Caches values, never tokens.** The optional on-disk cache stores only the
   resolved secret values; the token/secret_id are SHA-256 fingerprinted before
   they touch the cache key.
-* **Skips non-env-safe keys.** A KV key that is not a valid environment
-  variable name is skipped with a warning rather than injected.
+* **Skips unsafe keys and values.** A KV key that is not a valid environment
+  variable name, or one that could hijack how the process resolves binaries,
+  libraries, or interpreter startup (`PATH`, `LD_*`, `DYLD_*`, `PYTHONPATH`,
+  ...), is skipped with a warning rather than injected. Only scalar values
+  (strings and numbers) are injected; a structured value (list or object) is
+  skipped with a warning instead of being stringified into an unusable value.
 
 ## Threat model
 
@@ -106,7 +110,10 @@ a machine-readable `ErrorKind` (`not_configured`, `auth_failed`, `ref_invalid`,
 `network`, `timeout`, `binary_missing`, `internal`), and the backend in
 `_client.py` only ever raises `RuntimeError`, which `fetch()` catches and
 classifies. A misconfigured, unreachable, or unauthenticated Vault degrades to a
-clean skip, never a traceback on the non-interactive startup path.
+clean skip, never a traceback on the non-interactive startup path. Any other
+unexpected error (for example a corrupt cache file surfaced by the shared cache
+layer) is caught as well and reported as `internal`, so nothing can escape
+`fetch()`.
 
 ### A Vault secret cannot hijack the credential used to reach Vault
 
@@ -131,7 +138,11 @@ is opt-out: `cache_ttl_seconds: 0` disables it entirely.
 Each KV v2 key is validated with the host's `is_valid_env_name()` before it is
 contributed. A key that is not a valid environment-variable name is skipped with
 a warning instead of being injected, so a stray Vault key cannot produce a
-malformed process environment.
+malformed process environment. Keys that are valid identifiers but could hijack
+how the process resolves binaries, shared libraries, or interpreter startup
+(`PATH`, `LD_*`, `DYLD_*`, `PYTHONPATH`, `BASH_ENV`, ...) are refused as well,
+even when `override_existing` is on. Only scalar values are injected; a
+structured value is skipped rather than stringified.
 
 ### TLS verification is on by default
 
