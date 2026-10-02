@@ -1,7 +1,8 @@
 """HashiCorp Vault as a Hermes Agent secret source.
 
-Bulk KV v2 source: reads one Vault KV v2 secret path and contributes its
-keys as environment variables at Hermes startup, mirroring how the bundled
+Bulk KV v2 source: reads one Vault KV v2 secret path (or an ordered list of
+paths, later paths overriding earlier ones) and contributes the keys as
+environment variables at Hermes startup, mirroring how the bundled
 Bitwarden Secrets Manager source injects a whole project.
 
 Registered through the ``hermes_agent.plugins`` entry point (see
@@ -87,6 +88,13 @@ class VaultSource(SecretSource):
                 "description": "KV v2 secret path whose keys become env vars",
                 "default": "",
             },
+            "paths": {
+                "description": (
+                    "Ordered list of KV v2 paths, used instead of path. "
+                    "Keys from later paths override earlier ones."
+                ),
+                "default": [],
+            },
             "mount_point": {
                 "description": "KV v2 secrets-engine mount point",
                 "default": _DEFAULT_MOUNT_POINT,
@@ -143,12 +151,9 @@ class VaultSource(SecretSource):
             result.error_kind = ErrorKind.NOT_CONFIGURED
             return result
 
-        path = str(cfg.get("path") or "").strip()
-        if not path:
-            result.error = (
-                "secrets.vault.path is empty (the KV v2 path whose keys are "
-                "injected as environment variables)."
-            )
+        paths, path_error = _resolve_paths(cfg)
+        if path_error:
+            result.error = path_error
             result.error_kind = ErrorKind.NOT_CONFIGURED
             return result
 
@@ -201,24 +206,31 @@ class VaultSource(SecretSource):
             allow_zero=False,
         )
 
+        secrets: dict = {}
         try:
-            secrets, warnings = _client.fetch_vault_secrets(
-                addr=addr,
-                path=path,
-                mount_point=mount_point,
-                namespace=namespace,
-                verify=verify,
-                timeout=timeout,
-                auth_method=auth_method,
-                token=token,
-                role_id=role_id,
-                secret_id=secret_id,
-                cache_ttl_seconds=ttl,
-                # ttl=0 means "no caching": don't even write secret values to the
-                # on-disk cache, independent of the host cache's ttl handling.
-                use_cache=ttl > 0,
-                home_path=home_path,
-            )
+            # Later paths override earlier ones, so list shared paths first and
+            # the most specific path last. Any failed path fails the whole fetch:
+            # a partial merge would silently drop the keys of the missing layer.
+            for path in paths:
+                layer, warnings = _client.fetch_vault_secrets(
+                    addr=addr,
+                    path=path,
+                    mount_point=mount_point,
+                    namespace=namespace,
+                    verify=verify,
+                    timeout=timeout,
+                    auth_method=auth_method,
+                    token=token,
+                    role_id=role_id,
+                    secret_id=secret_id,
+                    cache_ttl_seconds=ttl,
+                    # ttl=0 means "no caching": don't even write secret values to
+                    # the on-disk cache, independent of the host cache's ttl.
+                    use_cache=ttl > 0,
+                    home_path=home_path,
+                )
+                secrets.update(layer)
+                result.warnings.extend(warnings)
         except RuntimeError as exc:
             result.error = str(exc)
             result.error_kind = _classify_vault_error(str(exc))
@@ -232,8 +244,27 @@ class VaultSource(SecretSource):
             return result
 
         result.secrets = secrets
-        result.warnings.extend(warnings)
         return result
+
+
+def _resolve_paths(cfg: dict):
+    """Return ``(paths, error)`` from ``path`` (one) or ``paths`` (ordered list)."""
+    single = str(cfg.get("path") or "").strip()
+    many = cfg.get("paths")
+    if many in (None, "", []):
+        if single:
+            return [single], ""
+        return [], (
+            "secrets.vault.path is empty (the KV v2 path whose keys are "
+            "injected as environment variables)."
+        )
+    if single:
+        return [], "secrets.vault sets both path and paths; use only one."
+    if not isinstance(many, list) or not all(
+        isinstance(p, str) and p.strip() for p in many
+    ):
+        return [], "secrets.vault.paths must be a list of non-empty KV v2 paths."
+    return [p.strip() for p in many], ""
 
 
 def _coerce_float(value, default: float, *, allow_zero: bool) -> float:

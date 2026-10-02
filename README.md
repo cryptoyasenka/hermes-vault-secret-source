@@ -6,8 +6,8 @@ A [HashiCorp Vault](https://developer.hashicorp.com/vault) secret source for
 [Hermes Agent](https://github.com/NousResearch/hermes-agent), packaged as a
 standalone pip plugin.
 
-At Hermes startup it reads one Vault **KV v2** secret path and injects every
-key found there as an environment variable, the same way the bundled Bitwarden
+At Hermes startup it reads one Vault **KV v2** secret path (or an ordered list
+of paths) and injects every key found there as an environment variable, the same way the bundled Bitwarden
 Secrets Manager source injects a whole project. This is a **bulk** source, so
 explicit per-variable bindings from mapped sources (like 1Password) take
 precedence over it.
@@ -49,6 +49,26 @@ secrets:
     cache_ttl_seconds: 300       # 0 disables caching
 ```
 
+### Layered paths
+
+To share one set of keys across several machines or profiles and keep a few
+machine-specific keys apart, list several paths with `paths` instead of `path`.
+They are read in order, and a key in a later path overrides the same key from an
+earlier path:
+
+```yaml
+secrets:
+  vault:
+    enabled: true
+    paths:
+      - apps/shared          # keys every machine uses
+      - apps/machine-a       # keys only this machine uses; wins on conflict
+```
+
+If any listed path fails (missing, forbidden, unreachable), the whole fetch fails
+and nothing is injected, so a missing layer never silently drops its keys. Set
+either `path` or `paths`, not both.
+
 Credentials are never written into config; they come from environment
 variables:
 
@@ -67,7 +87,8 @@ The env-var names are overridable per field (`addr_env`, `token_env`,
 | `enabled`                 | `false`        | Master switch                                   |
 | `addr`                    | `""`           | Vault URL; overrides `addr_env` when set        |
 | `addr_env`                | `VAULT_ADDR`   | Env var holding the Vault URL                   |
-| `path`                    | `""`           | KV v2 path to read (required)                   |
+| `path`                    | `""`           | KV v2 path to read (this or `paths` required)   |
+| `paths`                   | `[]`           | Ordered KV v2 paths; later paths override       |
 | `mount_point`             | `secret`       | KV v2 secrets-engine mount                      |
 | `auth_method`             | `token`        | `token` or `approle`                            |
 | `token_env`               | `VAULT_TOKEN`  | Env var with the token (token auth)             |

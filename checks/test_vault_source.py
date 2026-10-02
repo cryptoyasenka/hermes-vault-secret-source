@@ -127,6 +127,77 @@ def test_fetch_never_raises_on_unexpected_backend_error(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------------
+# VaultSource.fetch - ordered multi-path reads (paths:)
+# --------------------------------------------------------------------------
+
+def _stub_paths(monkeypatch, layers):
+    monkeypatch.setenv("VAULT_ADDR", "http://127.0.0.1:8200")
+    monkeypatch.setenv("VAULT_TOKEN", "root")
+    calls = []
+
+    def fake_fetch(**kwargs):
+        calls.append(kwargs["path"])
+        layer = layers[kwargs["path"]]
+        if isinstance(layer, Exception):
+            raise layer
+        return dict(layer), [f"warn:{kwargs['path']}"]
+
+    monkeypatch.setattr(_client, "fetch_vault_secrets", fake_fetch)
+    return calls
+
+
+def test_paths_merge_in_order_later_wins(monkeypatch, tmp_path):
+    calls = _stub_paths(monkeypatch, {
+        "shared": {"A": "shared-a", "B": "shared-b"},
+        "machine": {"B": "machine-b", "C": "machine-c"},
+    })
+    result = VaultSource().fetch(
+        {"enabled": True, "paths": ["shared", "machine"]}, tmp_path
+    )
+    assert result.ok
+    assert calls == ["shared", "machine"]
+    assert result.secrets == {"A": "shared-a", "B": "machine-b", "C": "machine-c"}
+    assert result.warnings == ["warn:shared", "warn:machine"]
+
+
+def test_paths_any_failed_layer_fails_whole_fetch(monkeypatch, tmp_path):
+    # A partial merge would silently drop the missing layer's keys, so one
+    # failed path must fail the fetch and contribute nothing.
+    _stub_paths(monkeypatch, {
+        "shared": {"A": "a"},
+        "machine": RuntimeError("Vault path not found (invalidpath): secret/machine"),
+    })
+    result = VaultSource().fetch(
+        {"enabled": True, "paths": ["shared", "machine"]}, tmp_path
+    )
+    assert not result.ok
+    assert result.error_kind is ErrorKind.REF_INVALID
+    assert not result.secrets
+
+
+@pytest.mark.parametrize("cfg", [
+    {"path": "one", "paths": ["two"]},
+    {"paths": "not-a-list"},
+    {"paths": ["ok", ""]},
+    {"paths": ["ok", 3]},
+])
+def test_invalid_paths_config_is_not_configured(monkeypatch, tmp_path, cfg):
+    calls = _stub_paths(monkeypatch, {})
+    result = VaultSource().fetch({"enabled": True, **cfg}, tmp_path)
+    assert result.error_kind is ErrorKind.NOT_CONFIGURED
+    assert calls == []
+
+
+def test_empty_paths_falls_back_to_path(monkeypatch, tmp_path):
+    calls = _stub_paths(monkeypatch, {"one": {"A": "a"}})
+    result = VaultSource().fetch(
+        {"enabled": True, "path": "one", "paths": []}, tmp_path
+    )
+    assert result.ok and result.secrets == {"A": "a"}
+    assert calls == ["one"]
+
+
+# --------------------------------------------------------------------------
 # _client._read_kv2 - KV v2 parsing against a fake hvac client
 # --------------------------------------------------------------------------
 
